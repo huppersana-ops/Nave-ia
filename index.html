@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nave Espacial com IA</title>
+<style>
+  body { text-align: center; font-family: Arial, sans-serif; background-color: #1e1e2e; color: white; margin: 0; padding: 16px; }
+  h1 { font-size: 32px; margin: 8px 0; }
+  p.instrucao { max-width: 560px; margin: 0 auto 12px; line-height: 1.5; color: #cdd6f4; }
+  button { font-size: 22px; padding: 12px 28px; margin: 8px; border: none; border-radius: 10px; background: #f9e2af; color: #1e1e2e; cursor: pointer; font-weight: bold; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #area { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; align-items: flex-start; margin-top: 10px; }
+  #jogo { background: #0b0b1a; border: 3px solid #89b4fa; border-radius: 12px; max-width: 100%; }
+  #webcam-container canvas { border-radius: 12px; border: 3px solid #a6e3a1; }
+  #gesto { font-size: 22px; color: #a6e3a1; margin-top: 8px; }
+  #mensagem { font-size: 32px; min-height: 44px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>🚀 Nave Espacial com IA</h1>
+<p class="instrucao">
+  Clique em Começar e permita a câmera. Mova a nave com os gestos e atire nos asteroides.
+  Só uma pessoa na frente da câmera!
+</p>
+
+<button id="btnComecar" onclick="iniciar()">Começar</button>
+
+<div id="area">
+  <canvas id="jogo" width="400" height="500"></canvas>
+  <div>
+    <div id="webcam-container"></div>
+    <div id="gesto">A IA vê: -</div>
+  </div>
+</div>
+
+<div id="mensagem"></div>
+<button id="btnReiniciar" onclick="reiniciar()" style="display:none">Jogar de novo</button>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<script>
+  // Link do modelo (precisa terminar com /)
+  const URL = "https://teachablemachine.withgoogle.com/models/bQQbO-Aoh/";
+
+  // Nomes das classes: TÊM que ser iguais aos do Teachable Machine
+  const ESQUERDA = "Esquerda";
+  const DIREITA = "Direita";
+  const ATIRAR = "Atirar";
+
+  const CERTEZA_MINIMA = 0.8; // se aparecer muito "Indefinido", tente 0.7
+
+  let model, webcam, maxPredictions;
+  let gestoAtual = "Indefinido";
+
+  const tela = document.getElementById("jogo");
+  const ctx = tela.getContext("2d");
+  let nave, tiros, asteroides, pontos, vidas, fimDeJogo, recarga, contadorFrames;
+
+  function reiniciar() {
+    nave = { x: 200, y: 450, largura: 40 };
+    tiros = [];
+    asteroides = [];
+    pontos = 0;
+    vidas = 3;
+    fimDeJogo = false;
+    recarga = 0;
+    contadorFrames = 0;
+    document.getElementById("mensagem").innerText = "";
+    document.getElementById("btnReiniciar").style.display = "none";
+  }
+
+  async function iniciar() {
+    const botao = document.getElementById("btnComecar");
+    botao.disabled = true;
+    botao.innerText = "Carregando...";
+    try {
+      model = await tmImage.load(URL + "model.json", URL + "metadata.json");
+      maxPredictions = model.getTotalClasses();
+      await ligarWebcam();
+      botao.style.display = "none";
+      reiniciar();
+      window.requestAnimationFrame(loop);
+    } catch (erro) {
+      console.error(erro);
+      botao.disabled = false;
+      botao.innerText = "Começar";
+      document.getElementById("mensagem").innerText = "Erro ao carregar. Confira o link e a câmera.";
+    }
+  }
+
+  async function ligarWebcam() {
+    const flip = true;
+    webcam = new tmImage.Webcam(300, 300, flip);
+    await webcam.setup();
+    await webcam.play();
+    document.getElementById("webcam-container").appendChild(webcam.canvas);
+  }
+
+  async function loop() {
+    webcam.update();
+    await descobrirGesto();
+    jogo(gestoAtual);
+    desenhar();
+    window.requestAnimationFrame(loop);
+  }
+
+  async function descobrirGesto() {
+    const previsoes = await model.predict(webcam.canvas);
+    let melhor = previsoes[0];
+    for (let i = 1; i < maxPredictions; i++) {
+      if (previsoes[i].probability > melhor.probability) melhor = previsoes[i];
+    }
+    gestoAtual = melhor.probability >= CERTEZA_MINIMA ? melhor.className : "Indefinido";
+    document.getElementById("gesto").innerText = "A IA vê: " + gestoAtual;
+  }
+
+  function jogo(gesto) {
+    if (fimDeJogo) return;
+    contadorFrames++;
+
+    if (gesto === ESQUERDA) nave.x -= 6;
+    if (gesto === DIREITA) nave.x += 6;
+    nave.x = Math.max(nave.largura / 2, Math.min(tela.width - nave.largura / 2, nave.x));
+
+    if (recarga > 0) recarga--;
+    if (gesto === ATIRAR && recarga === 0) {
+      tiros.push({ x: nave.x, y: nave.y - 25 });
+      recarga = 15;
+    }
+
+    if (contadorFrames % 50 === 0) {
+      asteroides.push({ x: 25 + Math.random() * (tela.width - 50), y: -20, raio: 20, vel: 2 + Math.random() * 1.5 + pontos / 100 });
+    }
+
+    tiros.forEach(t => t.y -= 9);
+    tiros = tiros.filter(t => t.y > -10);
+
+    asteroides.forEach(a => a.y += a.vel);
+    for (const a of asteroides) {
+      for (const t of tiros) {
+        if (Math.hypot(a.x - t.x, a.y - t.y) < a.raio + 5) {
+          a.morto = true;
+          t.y = -100;
+          pontos += 10;
+        }
+      }
+      if (!a.morto && Math.hypot(a.x - nave.x, a.y - nave.y) < a.raio + 18) {
+        a.morto = true;
+        vidas--;
+      } else if (!a.morto && a.y > tela.height + 20) {
+        a.morto = true;
+        vidas--;
+      }
+    }
+    asteroides = asteroides.filter(a => !a.morto);
+
+    if (vidas <= 0) {
+      fimDeJogo = true;
+      document.getElementById("mensagem").innerText = `Fim de jogo! Pontos: ${pontos}`;
+      document.getElementById("btnReiniciar").style.display = "inline-block";
+    }
+  }
+
+  function desenhar() {
+    ctx.clearRect(0, 0, tela.width, tela.height);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.font = "40px Arial";
+    ctx.fillText("🚀", nave.x, nave.y);
+
+    ctx.fillStyle = "#f9e2af";
+    tiros.forEach(t => ctx.fillRect(t.x - 2, t.y - 8, 4, 14));
+
+    ctx.font = "40px Arial";
+    asteroides.forEach(a => ctx.fillText("☄️", a.x, a.y));
+
+    ctx.fillStyle = "white";
+    ctx.font = "20px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText(`Pontos: ${pontos}   Vidas: ${"❤️".repeat(Math.max(vidas, 0))}`, 10, 22);
+  }
+</script>
+</body>
+</html>
