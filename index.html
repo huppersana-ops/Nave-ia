@@ -81,7 +81,8 @@
       await ligarWebcam();
       botao.style.display = "none";
       reiniciar();
-      window.requestAnimationFrame(loop);
+      window.requestAnimationFrame(loop);  // o jogo roda sempre
+      cicloIA();                            // a IA roda por conta própria
     } catch (erro) {
       console.error(erro);
       botao.disabled = false;
@@ -92,18 +93,31 @@
 
   async function ligarWebcam() {
     const flip = true;
-    webcam = new tmImage.Webcam(300, 300, flip);
+    webcam = new tmImage.Webcam(200, 200, flip); // largura e altura iguais
     await webcam.setup();
     await webcam.play();
     document.getElementById("webcam-container").appendChild(webcam.canvas);
   }
 
-  async function loop() {
+  // Jogo + câmera: leve, roda o tempo todo
+  function loop() {
     webcam.update();
-    await descobrirGesto();
     jogo(gestoAtual);
     desenhar();
     window.requestAnimationFrame(loop);
+  }
+
+  // IA: pesada, roda cerca de 6 vezes por segundo
+  async function cicloIA() {
+    while (true) {
+      try {
+        await descobrirGesto();
+      } catch (erro) {
+        console.error(erro);
+        document.getElementById("gesto").innerText = "Erro na IA (veja o Console)";
+      }
+      await new Promise(function (resolve) { setTimeout(resolve, 150); });
+    }
   }
 
   async function descobrirGesto() {
