@@ -49,7 +49,7 @@
   const DIREITA = "direita";
   const ATIRAR = "Atirar";
 
-  const CERTEZA_MINIMA = 0.5; // se aparecer muito "Indefinido", tente 0.5
+  const CERTEZA_MINIMA = 0.3; // se aparecer muito "Indefinido", tente 0.5
 
   let model, webcam, maxPredictions;
   let gestoAtual = "Indefinido";
@@ -67,7 +67,7 @@
     tiros = [];
     asteroides = [];
     pontos = 0;
-    vidas = 6700;
+    vidas = 5;
     fimDeJogo = false;
     recarga = 0;
     contadorFrames = 0;
@@ -82,7 +82,7 @@
     try {
       model = await tmPose.load(URL + "model.json", URL + "metadata.json");
       maxPredictions = model.getTotalClasses();
-      webcam = new tmPose.Webcam(250, 250, true); // largura e altura iguais
+      webcam = new tmPose.Webcam(250, 250, false); // largura e altura iguais
       await webcam.setup();
       await webcam.play();
       botao.style.display = "none";
@@ -123,7 +123,7 @@
         console.error(erro);
         document.getElementById("gesto").innerText = "Erro na IA (veja o Console)";
       }
-      await new Promise(function (resolve) { setTimeout(resolve, 5); });
+      await new Promise(function (resolve) { setTimeout(resolve, 30); });
     }
   }
 
@@ -137,11 +137,11 @@
     }
 
     // Atirar exige mais certeza, para não atirar sem querer
-    const minimo = melhor.className === ATIRAR ? 0.7 : CERTEZA_MINIMA;
+    const minimo = melhor.className === ATIRAR ? 0.85 : CERTEZA_MINIMA;
     if (melhor.probability >= minimo) {
       gestoAtual = melhor.className;
       tempoUltimoGesto = Date.now();
-    } else if (Date.now() - tempoUltimoGesto > 80) {
+    } else if (Date.now() - tempoUltimoGesto > 500) {
       // segura o último gesto por meio segundo antes de virar Indefinido
       gestoAtual = "Indefinido";
     }
@@ -153,8 +153,8 @@
     if (fimDeJogo) return;
     contadorFrames++;
 
-    if (gesto === ESQUERDA) nave.x -= 10;
-    if (gesto === DIREITA) nave.x += 10;
+    if (gesto === ESQUERDA) nave.x -= 8;
+    if (gesto === DIREITA) nave.x += 8;
     nave.x = Math.max(nave.largura / 2, Math.min(tela.width - nave.largura / 2, nave.x));
 
     if (recarga > 0) recarga--;
